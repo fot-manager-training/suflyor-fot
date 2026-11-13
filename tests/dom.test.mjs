@@ -65,3 +65,11 @@ test('missing microphone support does not prevent startup, file upload or pipeli
   const input=t.w.document.getElementById('audioIn');Object.defineProperty(input,'files',{value:[new File(['audio'],'file.mp3',{type:'audio/mpeg'})]});input.dispatchEvent(new t.w.Event('change'));await until(()=>t.speechRuns===1);assert.equal(t.api.App.cur.hasAudio,true);
  }finally{t.close();}
 });
+
+test('Sites startup does not display a ChatGPT login prompt',async()=>{
+ const t=await setup();try{
+  t.w.fetch=async()=>Response.json({authorized:true,configured:true,login_url:null});
+  assert.equal(t.w.document.querySelector('a[href*="signin-with-chatgpt"]'),null);
+  assert.equal(t.w.document.querySelector('#appSignin').classList.contains('hidden'),true);
+ }finally{t.close();}
+});

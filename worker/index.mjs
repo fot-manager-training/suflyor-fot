@@ -5,11 +5,11 @@ export class ApiError extends Error {
 }
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 function userId(request,env){
-  return env.AUTH_MODE==='password'?env.REQUEST_USER_ID:request.headers.get('oai-authenticated-user-id');
+  return env.AUTH_MODE==='password'?env.REQUEST_USER_ID:(request.headers.get('cf-connecting-ip')||'site-visitor');
 }
-function authorized(request,env){return !!env.SITE_OWNER_ID && userId(request,env)===env.SITE_OWNER_ID;}
+function authorized(request,env){return env.AUTH_MODE!=='password'||(!!env.SITE_OWNER_ID && userId(request,env)===env.SITE_OWNER_ID);}
 function authorize(request,env){
-  if(!userId(request,env))throw new ApiError(401,'signin','Войдите в приложение, чтобы запустить разбор.');
+  if(env.AUTH_MODE==='password'&&!userId(request,env))throw new ApiError(401,'signin','Введите пароль приложения, чтобы запустить разбор.');
   if(!authorized(request,env))throw new ApiError(403,'forbidden','Разбор доступен владельцу приложения.');
   const origin=request.headers.get('origin');
   if(origin&&origin!==new URL(request.url).origin)throw new ApiError(403,'forbidden','Недопустимый источник запроса.');
@@ -21,7 +21,7 @@ function authorize(request,env){
 }
 export async function handleApi(request,env){
   const path=new URL(request.url).pathname;
-  if(path==='/api/status')return json({provider:'deepseek',configured:!!env.DEEPSEEK_API_KEY,authorized:authorized(request,env),model:env.DEEPSEEK_MODEL||'deepseek-flash',login_url:env.AUTH_MODE==='password'?'/login':'/signin-with-chatgpt?returnTo=%2F%23new',speech:'whisper'});
+  if(path==='/api/status')return json({provider:'deepseek',configured:!!env.DEEPSEEK_API_KEY,authorized:authorized(request,env),model:env.DEEPSEEK_MODEL||'deepseek-flash',login_url:env.AUTH_MODE==='password'?'/login':null,speech:'whisper'});
   if(path!=='/api/analyze')return json({code:'not_found',message:'Маршрут не найден.'},404);
   if(request.method!=='POST')return json({code:'method_not_allowed'},405);
   try{

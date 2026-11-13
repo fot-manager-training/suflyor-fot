@@ -1110,7 +1110,7 @@ function startTranscription(){return Whisper.run();}
 
 /* =========================== ПРОВАЙДЕРЫ ИИ =========================== */
 const ERR = {
-  signin:'Войдите через кнопку в шапке сайта, чтобы запустить разбор.',
+  signin:'Введите пароль приложения, чтобы запустить разбор.',
   forbidden:'Разбор доступен владельцу приложения.',
   not_configured:'На сервере не настроен ключ DeepSeek.',
   auth:'DeepSeek отклонил серверный ключ API.',
@@ -1520,7 +1520,7 @@ $('wipeBtn').onclick = async ()=>{
   try{ const st = await Store.kv('settings'); if(st){ for(const key of Object.keys(DEFAULT_SETTINGS))if(key in st)App.settings[key]=st[key]; if(st.settingsVersion!==3){App.settings.provider='deepseek';App.settings.settingsVersion=3;} if(!['deepseek','manual'].includes(App.settings.provider))App.settings.provider='deepseek'; await Store.kv('settings',App.settings); } }catch(_){}
   try{ const kb = await Store.kv('kb'); if(kb && kb.zp){ App.kbZp=kb.zp; App.kbSp=kb.sp||KB_SPEECH_DEFAULT; } }catch(_){}
   $('provLabel').textContent = provLabel();
-  fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{const link=$('appSignin');link.classList.toggle('hidden',d.authorized);link.href=d.login_url;link.textContent=d.login_url==='/login'?'Войти':'Войти через ChatGPT';}).catch(()=>{});
+  fetch('/api/status',{cache:'no-store'}).then(r=>r.json()).then(d=>{const link=$('appSignin');link.classList.toggle('hidden',d.authorized||!d.login_url);if(d.login_url)link.href=d.login_url;link.textContent='Войти';}).catch(()=>{});
   resetSteps();
   if(!location.hash) history.replaceState(null,'','#new');
   await route();

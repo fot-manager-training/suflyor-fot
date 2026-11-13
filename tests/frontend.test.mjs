@@ -16,7 +16,7 @@ test('all seven pipeline stages complete and a report is saved',async()=>{
  assert.match(f.node('report').innerHTML,/Тестовый итог/);
 });
 test('authentication failure is clear and prevents model requests',async()=>{
- let calls=0;const f=createFrontend(async()=>{calls++;return Response.json({authorized:false,configured:true});});await f.runAuto();assert.equal(calls,1);assert.equal(f.App.cur.report,null);assert.match(f.node('runNote').textContent,/Войдите/);assert.equal(f.App.running,false);
+ let calls=0;const f=createFrontend(async()=>{calls++;return Response.json({authorized:false,configured:true});});await f.runAuto();assert.equal(calls,1);assert.equal(f.App.cur.report,null);assert.match(f.node('runNote').textContent,/пароль/);assert.equal(f.App.running,false);
 });
 test('parallel stage failure settles other jobs and keeps successful stages for retry',async()=>{
  let failed=true,structureCalls=0;const f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);if(input.prompt.includes('ЗАДАЧА: разбери структуру'))structureCalls++;if(failed&&input.prompt.includes('ЗАДАЧА: сверь выступление'))return Response.json({code:'balance',message:'Недостаточно средств'},{status:502});return Response.json({choices:[{message:{content:JSON.stringify(result(input.prompt))}}]});});
