@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {createFrontend} from './frontend-harness.mjs';
+import {handleApi} from '../worker/index.mjs';
+const env={DEEPSEEK_API_KEY:process.env.DEEPSEEK_API_KEY,DEEPSEEK_MODEL:process.env.DEEPSEEK_MODEL||'deepseek-flash',SITE_OWNER_ID:'live-owner'};
+if(!env.DEEPSEEK_API_KEY)throw Error('Set DEEPSEEK_API_KEY to run this optional live API test.');
+let requests=0;
+const f=createFrontend(async(path,options={})=>{
+ if(path==='/api/analyze')console.log('DeepSeek request',++requests,'started');
+ const req=new Request('https://example.test'+path,{method:options.method||'GET',headers:{...options.headers,'oai-authenticated-user-id':env.SITE_OWNER_ID},...(options.body?{body:options.body}:{})});
+ const response=await handleApi(req,env);
+ if(!response.ok)console.log('API failure:',response.status,await response.clone().text());
+ else if(path==='/api/analyze')console.log('DeepSeek response received');
+ return response;
+});
+f.App.settings.maxIter=2;
+await f.runAuto();
+assert.ok(f.App.cur.report,f.node('runNote').textContent);
+for(const [id,state] of Object.entries(f.stepState))assert.equal(state.status,'done',id);
+assert.ok(f.App.cur.report.findings.facts.claims.length>0);
+assert.ok(f.App.cur.report.findings.rubric.criteria.length>0);
+assert.ok(f.App.cur.report.final.summary);
+assert.match(f.node('report').innerHTML,/Структура/);
+console.log(JSON.stringify({result:'all seven pipeline stages completed',requests,score:f.App.cur.report.scores.total,claims:f.App.cur.report.findings.facts.claims.length,criteria:f.App.cur.report.findings.rubric.criteria.length,iterations:f.App.cur.report.iterations,summary:f.App.cur.report.final.summary},null,2));
