@@ -63,8 +63,7 @@ activate() {
   if [[ -n "$previous" && "$previous" != "$target" ]]; then ln -sfn "$previous" "$SUF_ROOT/previous"; fi
   ln -sfn "$target" "$SUF_ROOT/current.next"
   mv -Tf "$SUF_ROOT/current.next" "$SUF_ROOT/current"
-  systemctl restart suflyor
-  if ! health; then
+  if ! systemctl restart suflyor || ! health; then
     if [[ -n "$previous" && "$previous" != "$target" ]]; then
       ln -sfn "$previous" "$SUF_ROOT/current.next"; mv -Tf "$SUF_ROOT/current.next" "$SUF_ROOT/current"
       systemctl restart suflyor || true
