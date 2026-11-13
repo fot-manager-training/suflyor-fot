@@ -832,9 +832,8 @@ async function fillManagers(){
 
 /* =========================== ЗАПИСЬ =========================== */
 const SR = null;
-const Rec = {active:false, paused:false, t0:0, acc:0, mr:null, chunks:[], stream:null, sr:null, srOn:false, lines:[], interim:'', segStart:null, raf:0, ac:null, an:null, wake:null, tick:0, srFail:0, mode:'both'};
-if(!SR){ const o=$('recMode').querySelector('option[value="text"]'); o.disabled=true; $('recMode').querySelector('option[value="both"]').textContent='Звук (живой текст недоступен в этом браузере)'; }
-if(!navigator.mediaDevices || !window.MediaRecorder){ $('recStatus').textContent = SR ? 'Запись звука недоступна, работает только живой текст.' : 'Браузер не умеет записывать. Откройте приложение в Chrome или Safari.'; if(SR) $('recMode').value='text'; else $('recBtn').disabled=true; }
+const Rec = {active:false, paused:false, t0:0, acc:0, mr:null, chunks:[], stream:null, sr:null, srOn:false, lines:[], interim:'', segStart:null, raf:0, ac:null, an:null, wake:null, tick:0, srFail:0, mode:'audio'};
+if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){ $('recStatus').textContent='Запись микрофона недоступна в этом браузере. Можно загрузить готовый аудиофайл.';$('recBtn').disabled=true; }
 
 function recElapsed(){ if(!Rec.active) return Rec.acc; return Rec.paused ? Rec.acc : Rec.acc + (Date.now()-Rec.t0)/1000; }
 function recExport(){ return 'Длительность: '+hms(recElapsed())+'\n'+Rec.lines.map(l=>'['+hms(l.t)+'] '+l.text).join('\n'); }
