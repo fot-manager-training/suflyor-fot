@@ -1,3 +1,4 @@
+import {jsonrepair} from 'jsonrepair';
 const DEEPSEEK_API = 'https://api.deepseek.com/chat/completions';
 const limits = new Map();
 export class ApiError extends Error {
@@ -46,9 +47,14 @@ export async function handleApi(request,env){
     }
     const data=await response.json();
     if(data.choices?.[0]?.finish_reason==='length')throw new ApiError(502,'too_large','Ответ модели не поместился. Сократите текст или базу знаний.');
-    const text=data.choices?.[0]?.message?.content;
+    let text=data.choices?.[0]?.message?.content;
     if(typeof text!=='string'||!text.trim())throw new ApiError(502,'empty','DeepSeek вернул пустой ответ. Повторите запрос.');
-    if(input.jsonMode){try{JSON.parse(text);}catch{throw new ApiError(502,'invalid_json','DeepSeek вернул некорректный JSON. Повторите запрос.');}}
+    if(input.jsonMode){
+      let parsed;
+      try{parsed=JSON.parse(text);}catch{try{parsed=JSON.parse(jsonrepair(text));}catch{throw new ApiError(502,'invalid_json','Не удалось восстановить формат ответа DeepSeek. Повторите запрос.');}}
+      if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new ApiError(502,'invalid_json','DeepSeek не вернул объект разбора. Повторите запрос.');
+      text=JSON.stringify(parsed);
+    }
     return json({choices:[{message:{content:text}}],model:data.model||body.model});
   }catch(error){
     if(error instanceof ApiError)return json({code:error.code,message:error.message},error.status);

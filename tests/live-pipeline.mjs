@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createFrontend} from './frontend-harness.mjs';
 import {handleApi} from '../worker/index.mjs';
+import {extractDocument} from '../suflyor/document-reader.mjs';
 const env={DEEPSEEK_API_KEY:process.env.DEEPSEEK_API_KEY,DEEPSEEK_MODEL:process.env.DEEPSEEK_MODEL||'deepseek-flash',SITE_OWNER_ID:'live-owner'};
 if(!env.DEEPSEEK_API_KEY)throw Error('Set DEEPSEEK_API_KEY to run this optional live API test.');
 let requests=0;
@@ -14,7 +15,10 @@ const f=createFrontend(async(path,options={})=>{
  return response;
 });
 f.applyKnowledgeBundle(JSON.parse(readFileSync(new URL('../suflyor/knowledge.json',import.meta.url),'utf8')));
-f.App.settings.maxIter=2;
+if(process.env.TRANSCRIPT_DOCX){
+ const bytes=readFileSync(process.env.TRANSCRIPT_DOCX);f.App.cur.transcript=await extractDocument(new File([bytes],'meeting.docx'));f.node('transcript').value=f.App.cur.transcript;f.node('duration').value=process.env.TRANSCRIPT_DURATION||'';f.App.cur.duration=f.parseTranscript(f.App.cur.transcript).duration;f.node('manager').value='Тест';
+}
+f.App.settings.maxIter=3;
 await f.runAuto();
 assert.ok(f.App.cur.report,f.node('runNote').textContent);
 for(const [id,state] of Object.entries(f.stepState))assert.equal(state.status,'done',id);
@@ -22,4 +26,4 @@ assert.ok(f.App.cur.report.findings.facts.claims.length>0);
 assert.ok(f.App.cur.report.findings.rubric.criteria.length>0);
 assert.ok(f.App.cur.report.final.summary);
 assert.match(f.node('report').innerHTML,/Структура/);
-console.log(JSON.stringify({result:'all seven pipeline stages completed',requests,score:f.App.cur.report.scores.total,claims:f.App.cur.report.findings.facts.claims.length,criteria:f.App.cur.report.findings.rubric.criteria.length,iterations:f.App.cur.report.iterations,summary:f.App.cur.report.final.summary},null,2));
+console.log(JSON.stringify({result:'all seven pipeline stages completed',requests,score:f.App.cur.report.scores.total,claims:f.App.cur.report.findings.facts.claims.length,criteria:f.App.cur.report.findings.rubric.criteria.length,iterations:f.App.cur.report.iterations,summary:process.env.TRANSCRIPT_DOCX?'private transcript tested':f.App.cur.report.final.summary},null,2));

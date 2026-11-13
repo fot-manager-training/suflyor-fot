@@ -744,8 +744,8 @@ function syncWorkflow(){
   else if(analyzed){index=3;title='Разбор готов';detail='Отчёт сохранён. Ниже — оценки, цитаты и рекомендации.';progress=100;}
   else if(words>=60){index=2;title='Текст готов к проверке';detail='Проверьте расшифровку, укажите контекст и нажмите «Запустить разбор».';}
   else if(hasText||App.cur?.hasAudio||App.cur?.source==='text'){index=1;title=hasText?'Проверьте текст выступления':'Подготовьте текст';detail=hasText?`Сейчас ${words} слов. Для разбора нужно хотя бы 60 слов.`:'Вставьте текст или выберите Word / PDF. Для аудио доступна кнопка распознавания.';}
-  if(App.feedback&&!busy){title=App.feedback.text;detail='Можно исправить ввод и повторить действие. Готовые данные сохранены.';}
-  $('workflow').classList.toggle('hidden',App.view!=='work');$('workflowTitle').textContent=title;$('workflowDetail').textContent=detail;$('workflowCounter').textContent=`Шаг ${index+1} из 4`;
+  if(App.feedback&&!busy){if(App.feedback.stage)index=3;title=App.feedback.text;detail='Можно исправить ввод и повторить действие. Готовые данные сохранены.';}
+  $('workflow').classList.toggle('hidden',App.view!=='work');$('workflowTitle').textContent=title;$('workflowDetail').textContent=detail;$('workflowCounter').textContent=App.feedback?.stage&&!busy?`Проверка: шаг ${STEPS.findIndex(s=>s.id===App.feedback.stage)+1} из 7`:`Шаг ${index+1} из 4`;
   $('workflow').classList.toggle('error',App.feedback?.type==='error'&&!busy);$('workflowProgress').hidden=progress===null;if(progress!==null)$('workflowProgress').value=progress;
   document.querySelectorAll('[data-workflow-step]').forEach(el=>{const n=Number(el.dataset.workflowStep);el.setAttribute('aria-current',n===index?'step':'false');el.setAttribute('aria-disabled',String(busy&&n!==index));el.classList.toggle('complete',n<index||analyzed);});
   for(const [id,n] of [['sourceCard',0],['transcriptCard',1],['contextCard',2],['pipeCard',3]]){const el=$(id);el.classList.toggle('is-active',n===index);el.classList.toggle('is-locked',(busy&&n!==index)||(!busy&&((n===1&&!hasText&&!App.cur?.hasAudio&&App.cur?.source!=='text')||(n===2&&words<60))));el.setAttribute('aria-busy',String(busy&&n===index));}
@@ -1213,16 +1213,33 @@ async function llmText(prompt,signal,jsonMode=false){
     throw {code:data.code||'network',message:data.message||'Не удалось обратиться к DeepSeek.'};
   }
 }
-async function ask(prompt){
-  const ctl = new AbortController(); App.ctls.add(ctl);
-  try{
-    const t = await llmText(prompt, ctl.signal, true);
-    try{ return parseJSONLoose(t); }
-    catch(_){ // одна попытка починить формат
-      const t2 = await llmText(prompt+'\n\nВАЖНО: предыдущий ответ не был валидным JSON. Верни ТОЛЬКО один JSON-объект по схеме, без текста вокруг.', ctl.signal, true);
-      return parseJSONLoose(t2);
-    }
-  } finally { App.ctls.delete(ctl); }
+function validateModelResponse(data,kind){
+ const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
+ let valid=object(data);
+ if(valid&&kind==='structure')valid=Array.isArray(data.blocks);
+ if(valid&&kind==='facts')valid=Array.isArray(data.claims);
+ if(valid&&kind==='rubric')valid=Array.isArray(data.criteria);
+ if(valid&&kind==='verify')valid=Number.isFinite(Number(data.overall))&&Number(data.overall)>=0&&Number(data.overall)<=100&&object(data.confidence)&&Array.isArray(data.issues);
+ if(valid&&kind==='revise')valid=object(data.structure)||object(data.facts)||object(data.rubric);
+ if(valid&&kind==='final')valid=typeof data.summary==='string'&&!!data.summary.trim();
+ if(!valid)throw {code:'invalid_json',message:'В ответе сервиса не хватает данных для этого этапа. Повторите разбор: предыдущие этапы сохранены.'};
+ return data;
+}
+async function ask(prompt,kind){
+ const ctl=new AbortController();App.ctls.add(ctl);
+ try{
+  for(let attempt=0;attempt<2;attempt++){
+   try{
+    const extra=attempt?'\n\nПОВТОРНЫЙ ЗАПРОС: верни только корректный JSON-объект строго по указанной схеме, со всеми обязательными полями. Без Markdown, комментариев и текста до или после JSON. Экранируй кавычки внутри строк.':'';
+    return validateModelResponse(parseJSONLoose(await llmText(prompt+extra,ctl.signal,true)),kind);
+   }catch(error){
+    if(ctl.signal.aborted)throw {code:'cancelled'};
+    if(error.code!=='invalid_json'||attempt===1)throw error;
+    const step=kind==='revise'?'verify':kind;
+    if(stepState[step])setStep(step,{note:'Повторно проверяю ответ сервиса…'});
+   }
+  }
+ }finally{App.ctls.delete(ctl);}
 }
 
 /* =========================== КОНВЕЙЕР =========================== */
@@ -1316,7 +1333,7 @@ async function runAuto(){
     const job = async (id, builder)=>{
       if(memo[id]){ setStep(id,{status:'done', conf:clampPct(memo[id].confidence), note:'из предыдущего запуска'}); return memo[id]; }
       setStep(id,{status:'run'});
-      try{ const r = await ask(builder(ctx, metrics, text)); memo[id]=r; saveSoon(); setStep(id,{status:'done', conf:clampPct(r.confidence), note:'самооценка модели до проверки'}); return r; }
+      try{ const r = await ask(builder(ctx, metrics, text),id); memo[id]=r; saveSoon(); setStep(id,{status:'done', conf:clampPct(r.confidence), note:'самооценка модели до проверки'}); return r; }
       catch(e){ setStep(id,{status:'err',note:errorMessage(e)}); throw e; }
     };
     const results=[];
@@ -1334,7 +1351,7 @@ async function runAuto(){
         setStep('quotes',{status:'done', conf:qcConf, iter:`${iter}/${maxIter}`, note:`подтверждено ${qc.ok} из ${qc.total} цитат`});
         current='verify';
         setStep('verify',{status:'run', iter:`${iter}/${maxIter}`, note:'проверяющий перечитывает расшифровку и базы'});
-        const ver = await ask(pVerify(ctx, metrics, text, findings, qc, iter));
+        const ver = await ask(pVerify(ctx, metrics, text, findings, qc, iter),'verify');
         conf = clampPct(ver.overall); if(qc.coverage<0.95) conf=Math.min(conf, qcConf);
         const sc = ver.confidence||{}; stepConf={structure:clampPct(sc.structure), facts:clampPct(sc.facts), rubric:clampPct(sc.rubric)};
         setStep('structure',{conf:stepConf.structure, note:'после проверки'}); setStep('facts',{conf:stepConf.facts, note:'после проверки'}); setStep('rubric',{conf:stepConf.rubric, note:'после проверки'});
@@ -1344,7 +1361,7 @@ async function runAuto(){
         if(conf>=threshold){ setStep('verify',{status:'done', conf, iter:`${iter}/${maxIter}`, note:`порог ${threshold}% достигнут`}); break; }
         if(iter===maxIter){ setStep('verify',{status:'done', conf, iter:`${iter}/${maxIter}`, note:`порог ${threshold}% не достигнут, лимит итераций исчерпан`}); break; }
         setStep('verify',{status:'run', conf, iter:`${iter}/${maxIter}`, note:`исправляю ${issues.length} замечани${plural(issues.length,'е','я','й')}`});
-        const rev = await ask(pRevise(ctx, metrics, text, findings, ver, qc));
+        const rev = await ask(pRevise(ctx, metrics, text, findings, ver, qc),'revise');
         findings = normFindings({structure:rev.structure||findings.structure, facts:rev.facts||findings.facts, rubric:rev.rubric||findings.rubric});
       }
       iter=Math.min(iter,maxIter);
@@ -1352,13 +1369,13 @@ async function runAuto(){
     }
     current='final';
     let fin = memo.final;
-    if(!fin){ setStep('final',{status:'run'}); fin = await ask(pFinal(ctx, metrics, findings, computeScores(findings, metrics))); memo.final=fin; }
+    if(!fin){ setStep('final',{status:'run'}); fin = await ask(pFinal(ctx, metrics, findings, computeScores(findings, metrics)),'final'); memo.final=fin; }
     setStep('final',{status:'done', note:'готово'});
     finishReport('auto', ctx, metrics, findings, fin, conf, iter, log, {qcConf, stepConf});
   } catch(e){
     if(stepState[current] && stepState[current].status==='run') setStep(current,{status:'err'});
     const code = e && e.code;
-    App.feedback={type:code==='cancelled'?'info':'error',text:errorMessage(e)};
+    App.feedback={type:code==='cancelled'?'info':'error',text:errorMessage(e),stage:current};
     $('runNote').textContent = errorMessage(e);
     if(code==='signin'){const link=document.createElement('a');link.href=$('appSignin').href||'/login';link.target='_top';link.textContent=' Войти';$('runNote').append(link);}
     saveSession();

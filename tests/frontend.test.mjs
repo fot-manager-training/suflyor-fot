@@ -44,3 +44,11 @@ test('analysis progresses sequentially with one highlighted stage and locked inp
  f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);const running=Object.entries(f.stepState).filter(([,s])=>s.status==='run');assert.equal(running.length,1);seen.push(running[0][0]);assert.equal(f.node('textIn').disabled,true);assert.equal(f.node('goal').disabled,true);return Response.json({choices:[{message:{content:JSON.stringify(result(input.prompt))}}]});});
  await f.runAuto();assert.deepEqual(seen,['structure','facts','rubric','verify','final']);assert.equal(f.node('textIn').disabled,false);assert.equal(f.App.running,false);
 });
+test('verification retries malformed or incomplete replies without discarding earlier stages',async()=>{
+ let verifications=0,structures=0;const f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);if(input.prompt.includes('ЗАДАЧА: разбери структуру'))structures++;let data=result(input.prompt);if(input.prompt.includes('ЗАДАЧА: ты — независимый')&&++verifications===1)data={confidence:{},issues:[]};return Response.json({choices:[{message:{content:JSON.stringify(data)}}]});});
+ await f.runAuto();assert.ok(f.App.cur.report);assert.equal(structures,1);assert.equal(verifications,2);assert.equal(f.stepState.verify.status,'done');
+});
+test('unrecoverable verification error keeps the workflow indicator at step six',async()=>{
+ const f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);return Response.json({choices:[{message:{content:JSON.stringify(input.prompt.includes('ЗАДАЧА: ты — независимый')?{bad:true}:result(input.prompt))}}]});});
+ await f.runAuto();assert.equal(f.stepState.verify.status,'err');assert.match(f.node('workflowCounter').textContent,/6 из 7/);assert.equal(f.stepState.final.status,'wait');assert.equal(f.App.cur.report,null);
+});

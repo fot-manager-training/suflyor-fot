@@ -28,3 +28,8 @@ test('portable mode ignores spoofed ChatGPT identity and accepts only server ses
  const r=await handleApi(request({prompt:'test'}),e);assert.equal(r.status,401);
  const s=await handleApi(new Request('https://example.test/api/status'),{...e,REQUEST_USER_ID:'owner'});assert.equal((await s.json()).authorized,true);
 });
+test('malformed model JSON is safely normalized before returning it to the client',async()=>{
+ const malformed='```json\n{"overall":95,"issues":[],"verdict":"Клиент сказал "готово"",}\n```';
+ globalThis.fetch=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:malformed}}]});
+ const response=await handleApi(request({prompt:'JSON',jsonMode:true}),env);assert.equal(response.status,200);const data=JSON.parse((await response.json()).choices[0].message.content);assert.equal(data.overall,95);assert.equal(data.verdict,'Клиент сказал "готово"');
+});

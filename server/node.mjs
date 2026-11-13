@@ -63,5 +63,5 @@ export function createAppServer(settings=process.env){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const port=Number(process.env.PORT||3000);
-  createAppServer().listen(port,'0.0.0.0',()=>console.log(`Suflyor listening on port ${port}`));
+  createAppServer().listen(port,process.env.HOST||'0.0.0.0',()=>console.log(`Suflyor listening on port ${port}`));
 }
