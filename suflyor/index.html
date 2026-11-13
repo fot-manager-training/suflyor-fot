@@ -188,6 +188,17 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
   .grid{grid-template-columns:1fr}
   .card{break-inside:avoid;border-color:#ccc}
 }
+
+.workflow{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--surface);display:grid;gap:8px}
+.workflow-heading{display:flex;justify-content:space-between;gap:12px;align-items:center}.workflow-heading strong{font-size:17px}.workflow-heading span{font:12px var(--font-mono);color:var(--muted);white-space:nowrap}
+.workflow p{font-size:14px;color:var(--muted)}.workflow-track{list-style:none;padding:0;margin:4px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.workflow-track li{font-size:13px;padding:8px 10px;border-radius:7px;background:var(--bg);color:var(--muted);border:1px solid transparent}.workflow-track li[aria-current="step"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}.workflow-track li.complete{color:var(--good)}
+.card.is-active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.card.is-locked{opacity:.58}.steps li.run{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}.steps li.wait{opacity:.58}
+[aria-disabled="true"]{cursor:not-allowed}label[aria-disabled="true"]{pointer-events:none;opacity:.55}button:disabled,input:disabled,select:disabled{cursor:not-allowed}
+.kb-add{padding:14px;border:1px solid var(--line);border-radius:10px;display:grid;gap:12px;margin-bottom:18px}.kb-add summary{font-size:15px;color:var(--ink);font-weight:600}.workflow.error{border-color:var(--bad)}.workflow.error .workflow-heading strong{color:var(--bad)}
+@media(max-width:600px){.workflow-track{grid-template-columns:repeat(2,1fr)}.workflow-heading{align-items:start}.workflow-heading strong{font-size:15px}.workflow-heading span{font-size:11px}}
+@media print{.workflow{display:none}}
+
 </style>
 <link rel="stylesheet" href="../theme.css">
 <script src="../theme.js"></script>
@@ -215,10 +226,18 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
 </header>
 
 <main class="wrap">
+  <section id="workflow" class="workflow" role="status" aria-live="polite">
+    <div class="workflow-heading"><strong id="workflowTitle">Выберите источник выступления</strong><span id="workflowCounter">Шаг 1 из 4</span></div>
+    <p id="workflowDetail">Запишите аудио, загрузите файл или вставьте готовый текст.</p>
+    <ol class="workflow-track" aria-label="Порядок работы">
+      <li data-workflow-step="0">1 · Источник</li><li data-workflow-step="1">2 · Текст</li><li data-workflow-step="2">3 · Контекст</li><li data-workflow-step="3">4 · Проверка</li>
+    </ol>
+    <progress id="workflowProgress" max="100" value="0" hidden></progress>
+  </section>
   <!-- ================= WORKSPACE ================= -->
   <section id="view-work" class="grid">
     <div class="stack" id="leftCol">
-      <div class="card">
+      <div class="card" id="sourceCard">
         <div class="hd">
           <h2><span class="stepno">1</span>Источник</h2>
           <div class="seg" role="group" aria-label="Источник">
@@ -234,8 +253,6 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
           <canvas class="meter" id="meter" width="760" height="68" aria-hidden="true"></canvas>
           <div class="row" style="justify-content:center">
             <button class="btn small hidden" id="pauseBtn">Пауза</button>
-            <label class="lbl" for="recMode">Режим</label>
-            <select id="recMode"><option value="audio">Запись звука → Whisper</option></select>
           </div>
           <p class="note" id="recStatus">Нажмите красную кнопку и разрешите доступ к микрофону.</p>
           <div class="live hidden" id="live"></div>
@@ -250,16 +267,17 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
         </div>
 
         <div id="src-text" class="hidden" style="display:grid;gap:8px">
-          <p class="note">Вставьте расшифровку в поле ниже или загрузите файл из Телемоста, SaluteJazz, Zoom, Teams (.txt, .vtt, .srt).</p>
+          <p class="note">Вставьте расшифровку в поле ниже или загрузите файл из Телемоста, SaluteJazz, Zoom, Teams (.docx, .pdf, .txt, .vtt, .srt).</p>
           <div class="row">
             <label class="btn small" for="textIn">Загрузить файл</label>
-            <input type="file" id="textIn" accept=".txt,.md,.srt,.vtt,text/plain" class="hidden">
+            <input type="file" id="textIn" accept=".docx,.pdf,.txt,.md,.srt,.vtt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="hidden">
             <button class="btn small ghost" id="demoBtn">Вставить пример с ошибками</button>
+            <span class="note" id="textImportNote" role="status"></span>
           </div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="transcriptCard">
         <div class="hd"><h2><span class="stepno">2</span>Расшифровка</h2><span class="chip" id="trSrc"></span></div>
         <div id="audioBox" class="hidden" style="display:grid;gap:8px">
           <audio id="player" controls preload="metadata"></audio>
@@ -280,7 +298,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="contextCard">
         <h2><span class="stepno">3</span>Контекст и разбор</h2>
         <div class="row2">
           <div class="field"><label for="manager">Кто выступает</label><input type="text" id="manager" list="managers" placeholder="Имя менеджера" autocomplete="off"><datalist id="managers"></datalist></div>
@@ -359,14 +377,21 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
           <button class="btn small primary" id="kbSave">Сохранить</button>
         </div>
       </div>
+      <p class="note" id="kbSources"></p>
       <p class="note" id="kbNote">Агент сверяет выступление только с этими текстами. Обновляйте базу ЗП, когда меняются условия: добавьте раздел или замените цифры.</p>
+      <details class="kb-add" open><summary>Добавить пункт в базу знаний</summary>
+        <div class="row2"><div class="field"><label for="kbItemTarget">Раздел</label><select id="kbItemTarget"><option value="zp">Зарплатный проект</option><option value="sp">Публичные выступления и эталон</option></select></div>
+        <div class="field"><label for="kbItemTitle">Название пункта</label><input id="kbItemTitle" maxlength="200" placeholder="Например: работа с новым возражением"></div></div>
+        <div class="field"><label for="kbItemText">Что нужно знать при проверке</label><textarea id="kbItemText" maxlength="20000" placeholder="Добавьте правило, условие продукта или рекомендацию"></textarea></div>
+        <button type="button" class="btn primary" id="kbAddItem">Добавить и сохранить</button><p id="kbItemNote" class="note" role="status"></p>
+      </details>
       <div class="cols">
         <div class="field">
-          <div class="row sb"><label for="kbZp">Зарплатный проект</label><span class="row"><label class="btn small ghost" for="kbZpFile">Добавить из файла</label><input type="file" id="kbZpFile" accept=".txt,.md" class="hidden"></span></div>
+          <div class="row sb"><label for="kbZp">Зарплатный проект</label><span class="row"><label class="btn small ghost" for="kbZpFile">Добавить из файла</label><input type="file" id="kbZpFile" accept=".docx,.pdf,.txt,.md" class="hidden"></span></div>
           <textarea id="kbZp" class="kbta" spellcheck="false"></textarea><span class="note" id="kbZpLen"></span>
         </div>
         <div class="field">
-          <div class="row sb"><label for="kbSp">Публичные выступления и продажи</label><span class="row"><label class="btn small ghost" for="kbSpFile">Добавить из файла</label><input type="file" id="kbSpFile" accept=".txt,.md" class="hidden"></span></div>
+          <div class="row sb"><label for="kbSp">Публичные выступления и продажи</label><span class="row"><label class="btn small ghost" for="kbSpFile">Добавить из файла</label><input type="file" id="kbSpFile" accept=".docx,.pdf,.txt,.md" class="hidden"></span></div>
           <textarea id="kbSp" class="kbta" spellcheck="false"></textarea><span class="note" id="kbSpLen"></span>
         </div>
       </div>
@@ -417,12 +442,13 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
         <label class="btn small" for="impIn">Загрузить резервную копию</label><input type="file" id="impIn" accept=".json,application/json" class="hidden">
         <button class="btn small danger" id="wipeBtn">Удалить все данные</button>
       </div>
-      <p class="note">Всё хранится в этом браузере на этом устройстве: выступления, аудио, разборы, базы знаний и ключи. На другом устройстве данных не будет, пока вы не загрузите резервную копию. Не записывайте клиентские данные: ФИО, суммы, условия договоров.</p>
+      <p class="note">Всё хранится в этом браузере на этом устройстве: выступления, аудио, разборы и ваши дополнения к базе знаний. На другом устройстве данных не будет, пока вы не загрузите резервную копию. Не записывайте клиентские данные: ФИО, суммы, условия договоров.</p>
     </div>
   </section>
 </main>
 
 <div class="toast hidden" id="toast" role="status"></div>
+<script src="document-reader.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

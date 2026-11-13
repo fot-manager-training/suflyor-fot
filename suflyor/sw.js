@@ -1,6 +1,6 @@
 /* Суфлёр: офлайн-оболочка. Сначала сеть (чтобы получать обновления), при отсутствии сети — кэш. */
 const CACHE = 'suflyor-shell-v2';
-const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest', './icon.svg', '../theme.js', '../theme.css'];
+const SHELL = ['./', './index.html', './app.js', './document-reader.js', './knowledge.json', './manifest.webmanifest', './icon.svg', '../theme.js', '../theme.css'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('suflyor-shell-') && k !== CACHE).map(k => caches.delete(k)))));

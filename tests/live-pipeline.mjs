@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createFrontend} from './frontend-harness.mjs';
 import {handleApi} from '../worker/index.mjs';
 const env={DEEPSEEK_API_KEY:process.env.DEEPSEEK_API_KEY,DEEPSEEK_MODEL:process.env.DEEPSEEK_MODEL||'deepseek-flash',SITE_OWNER_ID:'live-owner'};
@@ -12,6 +13,7 @@ const f=createFrontend(async(path,options={})=>{
  else if(path==='/api/analyze')console.log('DeepSeek response received');
  return response;
 });
+f.applyKnowledgeBundle(JSON.parse(readFileSync(new URL('../suflyor/knowledge.json',import.meta.url),'utf8')));
 f.App.settings.maxIter=2;
 await f.runAuto();
 assert.ok(f.App.cur.report,f.node('runNote').textContent);

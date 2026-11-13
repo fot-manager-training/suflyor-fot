@@ -18,7 +18,7 @@ test('all seven pipeline stages complete and a report is saved',async()=>{
 test('authentication failure is clear and prevents model requests',async()=>{
  let calls=0;const f=createFrontend(async()=>{calls++;return Response.json({authorized:false,configured:true});});await f.runAuto();assert.equal(calls,1);assert.equal(f.App.cur.report,null);assert.match(f.node('runNote').textContent,/пароль/);assert.equal(f.App.running,false);
 });
-test('parallel stage failure settles other jobs and keeps successful stages for retry',async()=>{
+test('sequential stage failure keeps completed steps and resumes on retry',async()=>{
  let failed=true,structureCalls=0;const f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);if(input.prompt.includes('ЗАДАЧА: разбери структуру'))structureCalls++;if(failed&&input.prompt.includes('ЗАДАЧА: сверь выступление'))return Response.json({code:'balance',message:'Недостаточно средств'},{status:502});return Response.json({choices:[{message:{content:JSON.stringify(result(input.prompt))}}]});});
  await f.runAuto();assert.equal(f.stepState.facts.status,'err');assert.equal(f.stepState.structure.status,'done');assert.match(f.node('runNote').textContent,/Недостаточно средств/);failed=false;await f.runAuto();assert.ok(f.App.cur.report);assert.equal(structureCalls,1);
 });
@@ -32,4 +32,15 @@ test('Whisper saves completed chunks when later recognition is cancelled',async(
  f.configureSpeechTest({decode:async()=>new Float32Array(32000).fill(0.1),split:()=>[{start:0,end:16000},{start:16000,end:32000}],get:async()=>({blob:new Blob(['audio'])}),put:async(k,s)=>saved.push(structuredClone(s))});
  f.Whisper.device=async()=> 'wasm';f.Whisper.call=async request=>{if(request.type==='load')return {};if(++chunks===2)throw {code:'cancelled'};return {text:'Добрый день, коллеги.'};};
  await f.Whisper.run();assert.match(f.App.cur.transcript,/Добрый день/);assert.equal(f.App.cur.transcriptSource,'whisper');assert.equal(saved.length,1);assert.equal(f.Whisper.busy,false);assert.equal(f.node('transcript').readOnly,false);
+});
+
+test('new knowledge preserves custom points and is idempotent across repeated loading',()=>{
+ const f=createFrontend(()=>{});f.App.kbZp='Мой пользовательский пункт';
+ const bundle={version:'test',documents:[{id:'doc-1',title:'Материал',target:'zp',text:'Новое знание'}]};
+ f.applyKnowledgeBundle(bundle);f.applyKnowledgeBundle(bundle);assert.match(f.App.kbZp,/Мой пользовательский пункт/);assert.equal(f.App.kbZp.split('ИСТОЧНИК: doc-1').length-1,1);assert.match(f.Knowledge.defaults.zp,/Новое знание/);
+});
+test('analysis progresses sequentially with one highlighted stage and locked inputs',async()=>{
+ let f;const seen=[];
+ f=createFrontend(async(path,options)=>{if(path==='/api/status')return Response.json({authorized:true,configured:true});const input=JSON.parse(options.body);const running=Object.entries(f.stepState).filter(([,s])=>s.status==='run');assert.equal(running.length,1);seen.push(running[0][0]);assert.equal(f.node('textIn').disabled,true);assert.equal(f.node('goal').disabled,true);return Response.json({choices:[{message:{content:JSON.stringify(result(input.prompt))}}]});});
+ await f.runAuto();assert.deepEqual(seen,['structure','facts','rubric','verify','final']);assert.equal(f.node('textIn').disabled,false);assert.equal(f.App.running,false);
 });
