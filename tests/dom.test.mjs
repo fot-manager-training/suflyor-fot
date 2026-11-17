@@ -7,11 +7,17 @@ import {extractDocument} from '../suflyor/document-reader.mjs';
 const html=readFileSync(new URL('../suflyor/index.html',import.meta.url),'utf8');
 const script=readFileSync(new URL('../suflyor/app.js',import.meta.url),'utf8');
 async function until(predicate){for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Page did not reach the expected state');}
-async function setup({microphone=true}={}){
+async function setup({microphone=true,storedKb=null}={}){
  const errors=[];const console=new VirtualConsole();console.on('jsdomError',error=>errors.push(error.message));
  const dom=new JSDOM(html,{url:'https://example.test/#new',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole:console});
  const w=dom.window;
  Object.defineProperty(w,'indexedDB',{value:new IDBFactory()});
+ if(storedKb)await new Promise((resolve,reject)=>{
+  const request=w.indexedDB.open('suflyor',1);
+  request.onupgradeneeded=()=>{request.result.createObjectStore('sessions',{keyPath:'id'});request.result.createObjectStore('audio',{keyPath:'id'});request.result.createObjectStore('kv',{keyPath:'k'});};
+  request.onerror=()=>reject(request.error);
+  request.onsuccess=()=>{const db=request.result,tx=db.transaction('kv','readwrite');tx.objectStore('kv').put({k:'kb',v:storedKb});tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};
+ });
  w.structuredClone=structuredClone;w.Blob=Blob;w.File=File;
  w.fetch=async path=>path==='/knowledge.json'?Response.json(JSON.parse(readFileSync(new URL('../suflyor/knowledge.json',import.meta.url),'utf8'))):Response.json({authorized:true,configured:true,login_url:null});w.SuflyorDocs={extractDocument};w.scrollTo=()=>{};
  w.URL.createObjectURL=URL.createObjectURL;w.URL.revokeObjectURL=URL.revokeObjectURL;
@@ -95,8 +101,8 @@ test('Word upload reads the document and unlocks context for a sufficiently long
 });
 test('knowledge documents are merged and a person can append and save a new item',async()=>{
  const t=await setup();try{
-  assert.equal(t.api.Knowledge.sources.length,3);assert.match(t.api.App.kbSp,/ИСТОЧНИК: reference-speech/);assert.match(t.api.App.kbZp,/ИСТОЧНИК: salary-project/);
-  t.w.location.hash='#kb';await until(()=>t.w.document.getElementById('kbZp').value.includes('ИСТОЧНИК'));
+  assert.equal(t.api.Knowledge.sources.length,2);assert.match(t.api.App.kbSp,/версия 2\.1/);assert.match(t.api.App.kbZp,/версия 1\.1/);assert.doesNotMatch(t.api.App.kbSp,/ИСТОЧНИК: reference-speech/);
+  t.w.location.hash='#kb';await until(()=>t.w.document.getElementById('kbZp').value.includes('версия 1.1'));
   t.w.document.getElementById('kbItemTitle').value='Новое правило';t.w.document.getElementById('kbItemText').value='Уточняйте вопрос клиента перед ответом.';t.w.document.getElementById('kbAddItem').click();
   await until(()=>t.w.document.getElementById('kbItemNote').textContent.includes('сохранён'));
   const stored=await t.api.Store.kv('kb');assert.match(stored.zp,/Новое правило/);assert.match(stored.zp,/Уточняйте вопрос/);assert.ok(stored.bundleVersion);
@@ -121,5 +127,19 @@ test('failed document import preserves the current transcript and unlocks contro
   const input=t.w.document.getElementById('textIn');Object.defineProperty(input,'files',{value:[new File(['broken pdf'],'bad.pdf')],configurable:true});input.dispatchEvent(new t.w.Event('change'));
   await until(()=>t.w.document.getElementById('textImportNote').textContent.includes('Не удалось'));
   assert.equal(t.api.App.cur.id,id);assert.equal(t.api.App.cur.transcript,'Сохранённый текст встречи');assert.equal(input.disabled,false);assert.equal(t.api.App.task,null);
+ }finally{t.close();}
+});
+
+test('startup upgrades saved legacy knowledge, preserves custom items and backs up the old base',async()=>{
+ const bundle=JSON.parse(readFileSync(new URL('../suflyor/knowledge.json',import.meta.url),'utf8'));
+ const make=target=>bundle.legacy.bases[target]+bundle.legacy.documents.filter(d=>d.target===target).map(d=>'\n\n=== ИСТОЧНИК: '+d.id+' ===\n'+d.title+'\n'+d.text).join('');
+ const old={zp:make('zp')+'\n\n=== ДОПОЛНЕНИЕ: Моё правило ===\nСохраняем пользовательское условие.',sp:make('sp'),bundleVersion:'2026-11-13.1'};
+ const t=await setup({storedKb:old});try{
+  assert.match(t.api.App.kbZp,/версия 1\.1/);assert.match(t.api.App.kbZp,/Сохраняем пользовательское условие/);
+  assert.doesNotMatch(t.api.App.kbSp,/ИСТОЧНИК: reference-speech/);
+  const stored=await t.api.Store.kv('kb');assert.equal(stored.bundleVersion,bundle.version);assert.equal(stored.defaults.zp,bundle.documents[0].text);
+  const backup=await t.api.Store.kv('kbPrevious');assert.equal(backup.zp,old.zp);assert.equal(backup.sp,old.sp);
+  t.w.location.hash='#kb';await until(()=>!t.w.document.getElementById('view-kb').classList.contains('hidden'));
+  assert.equal(t.w.document.getElementById('kbPrevious').hidden,false);assert.deepEqual(t.errors,[]);
  }finally{t.close();}
 });

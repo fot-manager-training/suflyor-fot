@@ -5,7 +5,6 @@ const bundled=await build({entryPoints:['suflyor/document-reader.mjs'],bundle:tr
 const assets={};
 for(const file of ['index.html','app.js','sw.js','manifest.webmanifest','icon.svg','knowledge.json']){
  let body=readFileSync(`suflyor/${file}`,'utf8').replaceAll('../theme.','./theme.');
- if(file==='sw.js')body=body.replace('suflyor-shell-v2','suflyor-shell-v9');
  assets['/'+file]={body,type:file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.svg')?'image/svg+xml':file.endsWith('.json')?'application/json; charset=utf-8':'application/manifest+json'};
 }
 assets['/document-reader.js']={body:bundled.outputFiles[0].text,type:'text/javascript; charset=utf-8'};

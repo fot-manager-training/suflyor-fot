@@ -6,7 +6,6 @@ SUF_ROOT=/opt/suflyor
 SUF_SOURCE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 SUF_MODE=install
 SUF_HOST=''
-SUF_EMAIL=''
 SUF_BUILD_DIR=''
 SUF_DOWNLOAD_DIR=''
 
@@ -14,17 +13,16 @@ fail() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 help() {
   cat <<'TXT'
 Суфлёр: установка на Ubuntu 22.04+ / Debian 12+.
-  bash deploy/install-vps.sh --host PUBLIC_IP_OR_DOMAIN [--email EMAIL]
+  bash deploy/install-vps.sh --host PUBLIC_IP_OR_DOMAIN
   bash deploy/install-vps.sh --update
   bash deploy/install-vps.sh --rollback
-Ключ DeepSeek и пароль приложения запрашиваются скрыто, а не передаются аргументами.
+Ключ DeepSeek запрашивается скрыто, а не передаётся аргументом. Email и пароль приложения не нужны.
 Нужны открытые TCP-порты 80 и 443. SSH обычно использует порт 22.
 TXT
 }
 while (( $# )); do
   case "$1" in
     --host) (( $# >= 2 )) || fail '--host требует адрес'; SUF_HOST=${2,,}; shift 2 ;;
-    --email) (( $# >= 2 )) || fail '--email требует почту'; SUF_EMAIL=$2; shift 2 ;;
     --update) SUF_MODE=update; shift ;;
     --rollback) SUF_MODE=rollback; shift ;;
     --help|-h) help; exit 0 ;;
@@ -59,7 +57,9 @@ health() {
 }
 activate() {
   local target=$1 previous=''
-  previous=$(readlink -f "$SUF_ROOT/current" 2>/dev/null || true)
+  [[ -d "$target" && -f "$target/server/node.mjs" && -f "$target/dist/server/index.js" ]] || fail 'Не найден собранный выпуск приложения.'
+  previous=$(readlink -e "$SUF_ROOT/current" 2>/dev/null || true)
+  [[ -z "$previous" || -f "$previous/server/node.mjs" ]] || previous=''
   if [[ -n "$previous" && "$previous" != "$target" ]]; then ln -sfn "$previous" "$SUF_ROOT/previous"; fi
   ln -sfn "$target" "$SUF_ROOT/current.next"
   mv -Tf "$SUF_ROOT/current.next" "$SUF_ROOT/current"
@@ -97,8 +97,6 @@ fi
 [[ ! -f /etc/suflyor/installed ]] || fail 'Приложение уже установлено. Для обновления используйте --update.'
 [[ -n "$SUF_HOST" ]] || read -rp 'Публичный IPv4 или домен: ' SUF_HOST
 SUF_HOST=${SUF_HOST,,}
-[[ -n "$SUF_EMAIL" ]] || read -rp 'Email для регистрации HTTPS-сертификата: ' SUF_EMAIL
-[[ "$SUF_EMAIL" == *@*.* && "$SUF_EMAIL" != *$'\n'* ]] || fail 'Укажите корректный email.'
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -131,11 +129,8 @@ if [[ ! -x /opt/suflyor-node/bin/node ]] || [[ $(/opt/suflyor-node/bin/node --ve
 fi
 if [[ ! -f /etc/suflyor/environment ]]; then
   IFS= read -rsp 'Ключ API DeepSeek (ввод скрыт): ' SUF_KEY; printf '\n'
-  IFS= read -rsp 'Придумайте пароль входа в Суфлёр (не пароль root): ' SUF_PASSWORD; printf '\n'
-  IFS= read -rsp 'Повторите пароль приложения: ' SUF_CONFIRM; printf '\n'
-  [[ -n "$SUF_PASSWORD" && "$SUF_PASSWORD" == "$SUF_CONFIRM" ]] || fail 'Пароли не совпадают или пустые.'
-  printf '%s\0%s' "$SUF_KEY" "$SUF_PASSWORD" | python3 "$SUF_SOURCE/deploy/render-vps.py" environment --path /etc/suflyor/environment
-  unset SUF_KEY SUF_PASSWORD SUF_CONFIRM
+  printf '%s' "$SUF_KEY" | python3 "$SUF_SOURCE/deploy/render-vps.py" environment --path /etc/suflyor/environment
+  unset SUF_KEY
 fi
 install -m 0644 "$SUF_SOURCE/deploy/suflyor.service" /etc/systemd/system/suflyor.service
 systemctl daemon-reload
@@ -158,7 +153,7 @@ if [ "${RENEWED_LINEAGE:-}" = /etc/letsencrypt/live/suflyor ]; then
 fi
 HOOK
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/suflyor-nginx
-SUF_CERT_ARGS=(certonly --non-interactive --agree-tos --email "$SUF_EMAIL" --webroot --webroot-path /var/www/suflyor-acme --preferred-challenges http --cert-name suflyor --keep-until-expiring)
+SUF_CERT_ARGS=(certonly --non-interactive --agree-tos --register-unsafely-without-email --webroot --webroot-path /var/www/suflyor-acme --preferred-challenges http --cert-name suflyor --keep-until-expiring)
 if [[ "$SUF_KIND" == ipv4 ]]; then SUF_CERT_ARGS+=(--ip-address "$SUF_HOST" --preferred-profile shortlived); else SUF_CERT_ARGS+=(-d "$SUF_HOST"); fi
 /opt/suflyor-certbot/bin/certbot "${SUF_CERT_ARGS[@]}"
 python3 "$SUF_SOURCE/deploy/render-vps.py" nginx --host "$SUF_HOST" --tls > /etc/nginx/sites-available/suflyor.conf
@@ -169,5 +164,5 @@ install -m 0644 "$SUF_SOURCE/deploy/suflyor-cert-renew.timer" /etc/systemd/syste
 systemctl daemon-reload
 systemctl enable --now suflyor-cert-renew.timer
 printf '%s\n' "$SUF_HOST" > /etc/suflyor/installed
-printf '\nГотово: https://%s\nПароль приложения — тот, который вы ввели при установке.\n' "$SUF_HOST"
+printf '\nГотово: https://%s\nПриложение открывается без дополнительного входа.\n' "$SUF_HOST"
 printf 'Логи: journalctl -u suflyor -n 80 --no-pager\nСертификаты: systemctl list-timers suflyor-cert-renew.timer\n'

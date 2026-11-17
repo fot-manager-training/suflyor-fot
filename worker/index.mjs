@@ -1,3 +1,4 @@
+import release from '../release.json' with {type:'json'};
 import {jsonrepair} from 'jsonrepair';
 const DEEPSEEK_API = 'https://api.deepseek.com/chat/completions';
 const limits = new Map();
@@ -22,7 +23,7 @@ function authorize(request,env){
 }
 export async function handleApi(request,env){
   const path=new URL(request.url).pathname;
-  if(path==='/api/status')return json({provider:'deepseek',configured:!!env.DEEPSEEK_API_KEY,authorized:authorized(request,env),model:env.DEEPSEEK_MODEL||'deepseek-flash',login_url:env.AUTH_MODE==='password'?'/login':null,speech:'whisper'});
+  if(path==='/api/status')return json({...release,provider:'deepseek',configured:!!env.DEEPSEEK_API_KEY,authorized:authorized(request,env),model:env.DEEPSEEK_MODEL||'deepseek-flash',login_url:env.AUTH_MODE==='password'?'/login':null,speech:'whisper'});
   if(path!=='/api/analyze')return json({code:'not_found',message:'Маршрут не найден.'},404);
   if(request.method!=='POST')return json({code:'method_not_allowed'},405);
   try{

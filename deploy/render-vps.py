@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Pure configuration rendering for the VPS installer. Secrets are read on stdin."""
-import argparse, ipaddress, json, os, re, secrets, sys
+import argparse, ipaddress, json, os, re, sys
 from pathlib import Path
 
 def host_kind(host):
@@ -57,11 +57,10 @@ def nginx_config(host,tls=False):
 '''
 
 def write_environment(path,data):
-    key=str(data.get('key','')).strip();password=str(data.get('password',''))
-    if not key or not password or any(c in key+password for c in '\r\n\x00'):
-        raise ValueError('Ключ и пароль должны быть непустыми, без переносов строк.')
-    values={'DEEPSEEK_API_KEY':key,'DEEPSEEK_MODEL':'deepseek-flash','APP_PASSWORD':password,
-            'APP_SESSION_SECRET':secrets.token_hex(32),'NODE_ENV':'production','HOST':'127.0.0.1','PORT':'3000'}
+    key=str(data.get('key','')).strip()
+    if not key or any(c in key for c in '\r\n\x00'):
+        raise ValueError('Ключ должен быть непустым, без переносов строк.')
+    values={'DEEPSEEK_API_KEY':key,'DEEPSEEK_MODEL':'deepseek-flash','NODE_ENV':'production','HOST':'127.0.0.1','PORT':'3000'}
     path=Path(path)
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
     with os.fdopen(fd,'w') as file:
@@ -76,7 +75,7 @@ def main():
     if args.command=='kind':print(host_kind(args.host))
     elif args.command=='nginx':print(nginx_config(args.host,args.tls),end='')
     elif args.command=='environment':
-        key,password=sys.stdin.read().split('\x00',1);write_environment(args.path,{'key':key,'password':password})
+        write_environment(args.path,{'key':sys.stdin.read()})
     elif args.command=='check-host-unused':
         host_kind(args.host);config=re.sub(r'#.*','',sys.stdin.read())
         if any(args.host in names.split() for names in re.findall(r'\bserver_name\s+([^;]+);',config)):

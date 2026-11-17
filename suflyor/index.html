@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17202b">
-<title>Суфлёр</title>
+<title>Суфлёр v2.1</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -199,6 +199,15 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
 @media(max-width:600px){.workflow-track{grid-template-columns:repeat(2,1fr)}.workflow-heading{align-items:start}.workflow-heading strong{font-size:15px}.workflow-heading span{font-size:11px}}
 @media print{.workflow{display:none}}
 
+/* Mobile navigation stays on one row; horizontal scrolling preserves all links. */
+@media (max-width:640px){
+  .topbar .in{flex-wrap:nowrap;gap:8px;padding:6px 12px}
+  .topbar .brand{flex:none}.brand-t,.topbar .prov{display:none}
+  .topbar nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;min-width:0}
+  .topbar nav::-webkit-scrollbar{display:none}
+  .topbar nav a{white-space:nowrap;padding:6px 8px;font-size:13px;flex:none}
+  .topbar .theme-toggle{flex:none;margin:0;width:34px;height:34px}
+}
 </style>
 <link rel="stylesheet" href="../theme.css">
 <script src="../theme.js"></script>
@@ -208,7 +217,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
   <div class="in">
     <a class="brand" href="#new" aria-label="Суфлёр — новое выступление">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="9" width="3" height="6" rx="1.5" fill="currentColor"/><rect x="7" y="5" width="3" height="14" rx="1.5" fill="currentColor"/><rect x="12" y="2" width="3" height="20" rx="1.5" fill="#f0a53a"/><rect x="17" y="7" width="3" height="10" rx="1.5" fill="currentColor"/></svg>
-      Суфлёр
+      <span class="brand-t">Суфлёр</span>
     </a>
     <nav>
       <a href="#new" data-nav="new">Новое выступление</a>
@@ -306,7 +315,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
         </div>
         <div class="row2">
           <div class="field"><label for="audience">Аудитория</label>
-            <select id="audience"><option>КСБ</option><option>ММБ</option><option>KeyClients</option><option>Бюджетная организация</option><option>СКМ (Машиностроение)</option><option>Коллектив сотрудников клиента</option><option>Внутренняя: тренинг / коллеги</option></select></div>
+            <select id="audience" required><option value="" selected disabled>— выберите аудиторию —</option><option>КСБ</option><option>ММБ</option><option>KeyClients</option><option>Бюджетная организация</option><option>СКМ (Машиностроение)</option><option>Коллектив сотрудников клиента</option><option>Внутренняя: тренинг / коллеги</option></select></div>
           <div class="field"><label for="format">Формат</label>
             <select id="format"><option>Встреча с руководителем / собственником</option><option>Встреча с бухгалтерией / HR</option><option>Презентация для сотрудников компании</option><option>Вебинар / онлайн-презентация</option><option>Питч на тренинге</option></select></div>
         </div>
@@ -373,6 +382,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
       <div class="hd">
         <h2>Базы знаний</h2>
         <div class="row">
+          <button class="btn small" id="kbPrevious" hidden>Скачать прежние базы</button>
           <button class="btn small" id="kbReset">Вернуть исходные</button>
           <button class="btn small primary" id="kbSave">Сохранить</button>
         </div>
@@ -380,7 +390,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
       <p class="note" id="kbSources"></p>
       <p class="note" id="kbNote">Агент сверяет выступление только с этими текстами. Обновляйте базу ЗП, когда меняются условия: добавьте раздел или замените цифры.</p>
       <details class="kb-add" open><summary>Добавить пункт в базу знаний</summary>
-        <div class="row2"><div class="field"><label for="kbItemTarget">Раздел</label><select id="kbItemTarget"><option value="zp">Зарплатный проект</option><option value="sp">Публичные выступления и эталон</option></select></div>
+        <div class="row2"><div class="field"><label for="kbItemTarget">Раздел</label><select id="kbItemTarget"><option value="zp">Зарплатный проект</option><option value="sp">Публичные выступления</option></select></div>
         <div class="field"><label for="kbItemTitle">Название пункта</label><input id="kbItemTitle" maxlength="200" placeholder="Например: работа с новым возражением"></div></div>
         <div class="field"><label for="kbItemText">Что нужно знать при проверке</label><textarea id="kbItemText" maxlength="20000" placeholder="Добавьте правило, условие продукта или рекомендацию"></textarea></div>
         <button type="button" class="btn primary" id="kbAddItem">Добавить и сохранить</button><p id="kbItemNote" class="note" role="status"></p>
@@ -404,7 +414,7 @@ svg text{fill:var(--muted);font-family:var(--font-mono);font-size:10px}
       <h2>ИИ для разбора</h2>
       <div class="field"><label for="provider">Через что работает разбор</label>
         <select id="provider"><option value="deepseek">DeepSeek — автоматический разбор</option><option value="manual">Ручной режим: запрос в чат</option></select></div>
-      <div id="pv-deepseek"><p class="note">DeepSeek проверяет структуру, факты и публичное выступление, затем перепроверяет выводы и готовит рекомендации. Ключ хранится на сервере. На анализ отправляется только текст.</p></div>
+      <div id="pv-deepseek"><p class="note">DeepSeek проверяет структуру, факты и публичное выступление, затем перепроверяет выводы и готовит рекомендации. Ключ хранится на сервере. На анализ отправляется только текст. Перед отправкой скрываются распознаваемые телефоны, email, длинные номера, имена с отчеством и номера кабинетов. Исходная расшифровка сохраняется в вашем браузере.</p></div>
       <div id="pv-manual" class="hidden"><p class="note">Скопируйте запрос в чат DeepSeek и вставьте ответ. Ручной режим не использует серверный API.</p></div>
       <div class="row"><button class="btn small" id="testBtn">Проверить подключение</button><span class="note" id="testNote"></span></div>
     </div>
